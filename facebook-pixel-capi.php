@@ -81,6 +81,13 @@ class FacebookPixelCAPI {
         
         // Initialize components
         add_action('init', array($this, 'init_components'));
+
+        // Ensure Facebook cookies are set early
+        add_action('init', array($this, 'ensure_facebook_cookies'), 1);
+
+        // Queue processing cron
+        add_filter('cron_schedules', array($this, 'add_cron_schedules'));
+        add_action('fbpixel_capi_process_queue', array($this, 'process_queue'));
         
         // Initialize WooCommerce hooks after plugins are loaded
         add_action('plugins_loaded', array($this, 'init_woocommerce_hooks'));
@@ -194,6 +201,13 @@ class FacebookPixelCAPI {
         
         // Create log table if needed
         $this->create_log_table();
+
+        // Create queue table if needed
+        $this->create_queue_table();
+
+        if (!wp_next_scheduled('fbpixel_capi_process_queue')) {
+            wp_schedule_event(time() + 300, 'fbpixel_capi_five_minutes', 'fbpixel_capi_process_queue');
+        }
     }
     
     /**
@@ -202,6 +216,7 @@ class FacebookPixelCAPI {
     public function deactivate() {
         // Clean up scheduled events if any
         wp_clear_scheduled_hook('fbpixel_capi_cleanup_logs');
+        wp_clear_scheduled_hook('fbpixel_capi_process_queue');
     }
     
     /**
@@ -224,6 +239,29 @@ class FacebookPixelCAPI {
             PRIMARY KEY (id)
         ) $charset_collate;";
         
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+    }
+
+    /**
+     * Create queue table for retrying failed events
+     */
+    private function create_queue_table() {
+        global $wpdb;
+
+        $table_name = $wpdb->prefix . 'fbpixel_capi_queue';
+        $charset_collate = $wpdb->get_charset_collate();
+
+        $sql = "CREATE TABLE $table_name (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            event_data longtext NOT NULL,
+            attempts int(11) NOT NULL DEFAULT 0,
+            last_error text,
+            next_attempt_at datetime DEFAULT CURRENT_TIMESTAMP,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
+        ) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
     }
@@ -289,6 +327,39 @@ class FacebookPixelCAPI {
     public function track_page_view() {
         if (isset($this->event_tracker)) {
             $this->event_tracker->track_page_view();
+        }
+    }
+
+    /**
+     * Ensure Facebook cookies exist
+     */
+    public function ensure_facebook_cookies() {
+        FBPixel_CAPI_Helpers::ensure_fbp();
+        FBPixel_CAPI_Helpers::ensure_fbc();
+    }
+
+    /**
+     * Add custom cron schedules
+     *
+     * @param array $schedules
+     * @return array
+     */
+    public function add_cron_schedules($schedules) {
+        if (!isset($schedules['fbpixel_capi_five_minutes'])) {
+            $schedules['fbpixel_capi_five_minutes'] = array(
+                'interval' => 300,
+                'display' => __('Every 5 Minutes', 'w3-pixel-capi')
+            );
+        }
+        return $schedules;
+    }
+
+    /**
+     * Process queued events
+     */
+    public function process_queue() {
+        if (isset($this->api_client)) {
+            $this->api_client->process_queue();
         }
     }
     

@@ -124,7 +124,14 @@ class FBPixel_CAPI_Event_Tracker {
                 'content_name' => $product->get_name(),
                 'content_category' => $this->get_product_categories($product_id),
                 'value' => (float) $product_price,
-                'currency' => get_woocommerce_currency()
+                'currency' => get_woocommerce_currency(),
+                'contents' => array(
+                    array(
+                        'id' => (string) $product_id,
+                        'quantity' => 1,
+                        'item_price' => (float) $product_price
+                    )
+                )
             ),
             'event_id' => $this->generate_event_id('ViewContent', $product_id)
         );
@@ -194,7 +201,14 @@ class FBPixel_CAPI_Event_Tracker {
                 'currency' => get_woocommerce_currency(),
                 'content_name' => $product->get_name(),
                 'content_category' => $this->get_product_categories($product_id),
-                'num_items' => (int) $quantity
+                'num_items' => (int) $quantity,
+                'contents' => array(
+                    array(
+                        'id' => (string) $product_id,
+                        'quantity' => (int) $quantity,
+                        'item_price' => (float) $product->get_price()
+                    )
+                )
             ),
             'event_id' => $this->generate_event_id('AddToCart', $product_id . '_' . $quantity)
         );
@@ -417,31 +431,72 @@ class FBPixel_CAPI_Event_Tracker {
             'client_user_agent' => FBPixel_CAPI_Helpers::get_user_agent()
         );
         
-        // Add Facebook click ID and browser ID if available
-        if (!empty($_COOKIE['_fbc'])) {
-            $user_data['fbc'] = sanitize_text_field($_COOKIE['_fbc']);
+        // Ensure cookies and add Facebook click/browser IDs
+        $fbc = FBPixel_CAPI_Helpers::ensure_fbc();
+        if (!empty($fbc)) {
+            $user_data['fbc'] = $fbc;
         }
-        
-        if (!empty($_COOKIE['_fbp'])) {
-            $user_data['fbp'] = sanitize_text_field($_COOKIE['_fbp']);
+
+        $fbp = FBPixel_CAPI_Helpers::ensure_fbp();
+        if (!empty($fbp)) {
+            $user_data['fbp'] = $fbp;
         }
         
         // Add user email if logged in
         if (is_user_logged_in()) {
             $current_user = wp_get_current_user();
             if (!empty($current_user->user_email)) {
-                $user_data['em'] = hash('sha256', strtolower(trim($current_user->user_email)));
+                $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($current_user->user_email);
+                if ($hashed) {
+                    $user_data['em'] = $hashed;
+                }
             }
             
             // Add user names if available
             if (!empty($current_user->first_name)) {
-                $user_data['fn'] = hash('sha256', strtolower(trim($current_user->first_name)));
+                $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($current_user->first_name);
+                if ($hashed) {
+                    $user_data['fn'] = $hashed;
+                }
             }
             
             if (!empty($current_user->last_name)) {
-                $user_data['ln'] = hash('sha256', strtolower(trim($current_user->last_name)));
+                $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($current_user->last_name);
+                if ($hashed) {
+                    $user_data['ln'] = $hashed;
+                }
             }
         }
+
+        // Add WooCommerce customer data when available
+        if (class_exists('WooCommerce')) {
+            $customer = WC()->customer;
+            if ($customer) {
+                $customer_data = FBPixel_CAPI_Helpers::get_wc_customer_data($customer);
+                $user_data = array_merge($user_data, $customer_data);
+            }
+        }
+
+        // External ID (hashed unique user ID)
+        $user_id = get_current_user_id();
+        if (!empty($user_id)) {
+            $external_id = FBPixel_CAPI_Helpers::normalize_and_hash((string) $user_id);
+            if ($external_id) {
+                $user_data['external_id'] = $external_id;
+            }
+        } elseif (class_exists('WooCommerce') && !empty($customer) && method_exists($customer, 'get_id')) {
+            $customer_id = $customer->get_id();
+            if (!empty($customer_id)) {
+                $external_id = FBPixel_CAPI_Helpers::normalize_and_hash((string) $customer_id);
+                if ($external_id) {
+                    $user_data['external_id'] = $external_id;
+                }
+            }
+        }
+
+        $user_data = array_filter($user_data, function ($value) {
+            return $value !== null && $value !== '';
+        });
         
         return $user_data;
     }
@@ -458,57 +513,93 @@ class FBPixel_CAPI_Event_Tracker {
             'client_user_agent' => FBPixel_CAPI_Helpers::get_user_agent()
         );
         
-        // Add Facebook click ID and browser ID if available
-        if (!empty($_COOKIE['_fbc'])) {
-            $user_data['fbc'] = sanitize_text_field($_COOKIE['_fbc']);
+        // Ensure cookies and add Facebook click/browser IDs
+        $fbc = FBPixel_CAPI_Helpers::ensure_fbc();
+        if (!empty($fbc)) {
+            $user_data['fbc'] = $fbc;
         }
-        
-        if (!empty($_COOKIE['_fbp'])) {
-            $user_data['fbp'] = sanitize_text_field($_COOKIE['_fbp']);
+
+        $fbp = FBPixel_CAPI_Helpers::ensure_fbp();
+        if (!empty($fbp)) {
+            $user_data['fbp'] = $fbp;
         }
         
         // Add customer data from order
         $billing_email = $order->get_billing_email();
         if (!empty($billing_email)) {
-            $user_data['em'] = hash('sha256', strtolower(trim($billing_email)));
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($billing_email);
+            if ($hashed) {
+                $user_data['em'] = $hashed;
+            }
         }
         
         $billing_first_name = $order->get_billing_first_name();
         if (!empty($billing_first_name)) {
-            $user_data['fn'] = hash('sha256', strtolower(trim($billing_first_name)));
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($billing_first_name);
+            if ($hashed) {
+                $user_data['fn'] = $hashed;
+            }
         }
         
         $billing_last_name = $order->get_billing_last_name();
         if (!empty($billing_last_name)) {
-            $user_data['ln'] = hash('sha256', strtolower(trim($billing_last_name)));
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($billing_last_name);
+            if ($hashed) {
+                $user_data['ln'] = $hashed;
+            }
         }
         
         $billing_phone = $order->get_billing_phone();
         if (!empty($billing_phone)) {
-            // Remove non-numeric characters
-            $phone = preg_replace('/[^0-9]/', '', $billing_phone);
-            $user_data['ph'] = hash('sha256', $phone);
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash_phone($billing_phone);
+            if ($hashed) {
+                $user_data['ph'] = $hashed;
+            }
         }
         
         $billing_city = $order->get_billing_city();
         if (!empty($billing_city)) {
-            $user_data['ct'] = hash('sha256', strtolower(trim($billing_city)));
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($billing_city);
+            if ($hashed) {
+                $user_data['ct'] = $hashed;
+            }
         }
         
         $billing_state = $order->get_billing_state();
         if (!empty($billing_state)) {
-            $user_data['st'] = hash('sha256', strtolower(trim($billing_state)));
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($billing_state);
+            if ($hashed) {
+                $user_data['st'] = $hashed;
+            }
         }
         
         $billing_postcode = $order->get_billing_postcode();
         if (!empty($billing_postcode)) {
-            $user_data['zp'] = hash('sha256', strtolower(trim($billing_postcode)));
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($billing_postcode);
+            if ($hashed) {
+                $user_data['zp'] = $hashed;
+            }
         }
         
         $billing_country = $order->get_billing_country();
         if (!empty($billing_country)) {
-            $user_data['country'] = hash('sha256', strtolower(trim($billing_country)));
+            $hashed = FBPixel_CAPI_Helpers::normalize_and_hash($billing_country);
+            if ($hashed) {
+                $user_data['country'] = $hashed;
+            }
         }
+
+        $customer_id = $order->get_customer_id();
+        if (!empty($customer_id)) {
+            $external_id = FBPixel_CAPI_Helpers::normalize_and_hash((string) $customer_id);
+            if ($external_id) {
+                $user_data['external_id'] = $external_id;
+            }
+        }
+
+        $user_data = array_filter($user_data, function ($value) {
+            return $value !== null && $value !== '';
+        });
         
         return $user_data;
     }
@@ -589,7 +680,8 @@ class FBPixel_CAPI_Event_Tracker {
      */
     private function generate_event_id($event_name, $additional_data = '') {
         $data = $event_name . '_' . time() . '_' . $additional_data . '_' . FBPixel_CAPI_Helpers::get_client_ip();
-        return substr(md5($data), 0, 16);
+        $event_id = substr(md5($data), 0, 16);
+        return apply_filters('fbpixel_capi_event_id', $event_id, $event_name, $additional_data);
     }
     
     /**

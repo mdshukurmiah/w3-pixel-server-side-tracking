@@ -67,9 +67,12 @@ class FBPixel_CAPI_Helpers {
         if (is_admin()) {
             return admin_url();
         }
-        
-        global $wp;
-        return home_url(add_query_arg(array(), $wp->request));
+
+        $scheme = is_ssl() ? 'https' : 'http';
+        $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : parse_url(home_url(), PHP_URL_HOST);
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/';
+
+        return esc_url_raw($scheme . '://' . $host . $request_uri);
     }
     
     /**
@@ -92,6 +95,16 @@ class FBPixel_CAPI_Helpers {
     public static function sanitize_phone($phone) {
         return preg_replace('/[^0-9]/', '', $phone);
     }
+
+    /**
+     * Check if a value looks like a SHA256 hash
+     *
+     * @param string $value
+     * @return bool
+     */
+    public static function is_sha256($value) {
+        return is_string($value) && preg_match('/^[a-f0-9]{64}$/i', $value);
+    }
     
     /**
      * Hash data using SHA256
@@ -101,6 +114,50 @@ class FBPixel_CAPI_Helpers {
      */
     public static function hash_data($data) {
         return hash('sha256', strtolower(trim($data)));
+    }
+
+    /**
+     * Normalize and hash data if needed (avoids double hashing)
+     *
+     * @param string $data
+     * @return string|null
+     */
+    public static function normalize_and_hash($data) {
+        if ($data === null || $data === '') {
+            return null;
+        }
+        $data = trim((string) $data);
+        if ($data === '') {
+            return null;
+        }
+        if (self::is_sha256($data)) {
+            return strtolower($data);
+        }
+        return self::hash_data($data);
+    }
+
+    /**
+     * Normalize and hash phone number if needed (avoids double hashing)
+     *
+     * @param string $phone
+     * @return string|null
+     */
+    public static function normalize_and_hash_phone($phone) {
+        if ($phone === null || $phone === '') {
+            return null;
+        }
+        $phone = trim((string) $phone);
+        if ($phone === '') {
+            return null;
+        }
+        if (self::is_sha256($phone)) {
+            return strtolower($phone);
+        }
+        $digits = self::sanitize_phone($phone);
+        if ($digits === '') {
+            return null;
+        }
+        return hash('sha256', $digits);
     }
     
     /**
@@ -147,15 +204,24 @@ class FBPixel_CAPI_Helpers {
         $user_data = array();
         
         if (!empty($user->user_email)) {
-            $user_data['em'] = self::hash_data($user->user_email);
+            $hashed = self::normalize_and_hash($user->user_email);
+            if ($hashed) {
+                $user_data['em'] = $hashed;
+            }
         }
         
         if (!empty($user->first_name)) {
-            $user_data['fn'] = self::hash_data($user->first_name);
+            $hashed = self::normalize_and_hash($user->first_name);
+            if ($hashed) {
+                $user_data['fn'] = $hashed;
+            }
         }
         
         if (!empty($user->last_name)) {
-            $user_data['ln'] = self::hash_data($user->last_name);
+            $hashed = self::normalize_and_hash($user->last_name);
+            if ($hashed) {
+                $user_data['ln'] = $hashed;
+            }
         }
         
         return $user_data;
@@ -176,42 +242,66 @@ class FBPixel_CAPI_Helpers {
         
         $email = $customer->get_email();
         if (!empty($email)) {
-            $customer_data['em'] = self::hash_data($email);
+            $hashed = self::normalize_and_hash($email);
+            if ($hashed) {
+                $customer_data['em'] = $hashed;
+            }
         }
         
         $first_name = $customer->get_first_name();
         if (!empty($first_name)) {
-            $customer_data['fn'] = self::hash_data($first_name);
+            $hashed = self::normalize_and_hash($first_name);
+            if ($hashed) {
+                $customer_data['fn'] = $hashed;
+            }
         }
         
         $last_name = $customer->get_last_name();
         if (!empty($last_name)) {
-            $customer_data['ln'] = self::hash_data($last_name);
+            $hashed = self::normalize_and_hash($last_name);
+            if ($hashed) {
+                $customer_data['ln'] = $hashed;
+            }
         }
         
         $phone = $customer->get_billing_phone();
         if (!empty($phone)) {
-            $customer_data['ph'] = self::hash_data(self::sanitize_phone($phone));
+            $hashed = self::normalize_and_hash_phone($phone);
+            if ($hashed) {
+                $customer_data['ph'] = $hashed;
+            }
         }
         
         $city = $customer->get_billing_city();
         if (!empty($city)) {
-            $customer_data['ct'] = self::hash_data($city);
+            $hashed = self::normalize_and_hash($city);
+            if ($hashed) {
+                $customer_data['ct'] = $hashed;
+            }
         }
         
         $state = $customer->get_billing_state();
         if (!empty($state)) {
-            $customer_data['st'] = self::hash_data($state);
+            $hashed = self::normalize_and_hash($state);
+            if ($hashed) {
+                $customer_data['st'] = $hashed;
+            }
         }
         
         $postcode = $customer->get_billing_postcode();
         if (!empty($postcode)) {
-            $customer_data['zp'] = self::hash_data($postcode);
+            $hashed = self::normalize_and_hash($postcode);
+            if ($hashed) {
+                $customer_data['zp'] = $hashed;
+            }
         }
         
         $country = $customer->get_billing_country();
         if (!empty($country)) {
-            $customer_data['country'] = self::hash_data($country);
+            $hashed = self::normalize_and_hash($country);
+            if ($hashed) {
+                $customer_data['country'] = $hashed;
+            }
         }
         
         return $customer_data;
@@ -342,6 +432,75 @@ class FBPixel_CAPI_Helpers {
         }
         
         return null;
+    }
+
+    /**
+     * Ensure _fbp cookie exists and return its value
+     *
+     * @return string|null
+     */
+    public static function ensure_fbp() {
+        if (!empty($_COOKIE['_fbp'])) {
+            return sanitize_text_field($_COOKIE['_fbp']);
+        }
+
+        $fbp = 'fb.1.' . time() . '.' . wp_rand(1000000000, 9999999999);
+        self::set_cookie('_fbp', $fbp);
+        return $fbp;
+    }
+
+    /**
+     * Ensure _fbc cookie exists from fbclid and return its value
+     *
+     * @return string|null
+     */
+    public static function ensure_fbc() {
+        if (!empty($_COOKIE['_fbc'])) {
+            return sanitize_text_field($_COOKIE['_fbc']);
+        }
+
+        if (!empty($_GET['fbclid'])) {
+            $fbclid = sanitize_text_field($_GET['fbclid']);
+            $fbc = 'fb.1.' . time() . '.' . $fbclid;
+            self::set_cookie('_fbc', $fbc);
+            return $fbc;
+        }
+
+        return null;
+    }
+
+    /**
+     * Set a cookie with sane defaults
+     *
+     * @param string $name
+     * @param string $value
+     * @param int $days
+     */
+    public static function set_cookie($name, $value, $days = 90) {
+        if (headers_sent()) {
+            return;
+        }
+
+        $expire = time() + (int) $days * DAY_IN_SECONDS;
+        $path = defined('COOKIEPATH') ? COOKIEPATH : '/';
+        $domain = defined('COOKIE_DOMAIN') && COOKIE_DOMAIN ? COOKIE_DOMAIN : '';
+        $secure = is_ssl();
+        $httponly = false;
+
+        if (PHP_VERSION_ID >= 70300) {
+            setcookie($name, $value, array(
+                'expires' => $expire,
+                'path' => $path,
+                'domain' => $domain,
+                'secure' => $secure,
+                'httponly' => $httponly,
+                'samesite' => 'Lax'
+            ));
+        } else {
+            setcookie($name, $value, $expire, $path . '; samesite=Lax', $domain, $secure, $httponly);
+        }
+
+        $_COOKIE[$name] = $value;
     }
 }
 

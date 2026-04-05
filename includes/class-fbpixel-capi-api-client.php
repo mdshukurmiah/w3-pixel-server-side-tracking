@@ -38,9 +38,10 @@ class FBPixel_CAPI_API_Client {
      * Send events to Facebook Conversions API
      * 
      * @param array $events Array of event data
+     * @param bool $allow_queue Whether to enqueue on failure
      * @return array|WP_Error Response data or error
      */
-    public function send_events($events) {
+    public function send_events($events, $allow_queue = true) {
         // Validate settings
         if (empty($this->settings['pixel_id']) || empty($this->settings['access_token'])) {
             return new WP_Error('missing_credentials', __('Pixel ID or Access Token is missing', 'w3-pixel-capi'));
@@ -76,7 +77,7 @@ class FBPixel_CAPI_API_Client {
             'headers' => $headers,
             'body' => wp_json_encode($body),
             'timeout' => 30,
-            'blocking' => false, // Make it asynchronous for better performance
+            'blocking' => true,
             'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . get_bloginfo('url')
         );
         
@@ -91,6 +92,11 @@ class FBPixel_CAPI_API_Client {
         // Handle response
         if (is_wp_error($response)) {
             $this->log_error('API Request Failed', $response->get_error_message(), $events);
+            if ($allow_queue) {
+                foreach ($events as $event) {
+                    $this->queue_event($event, $response->get_error_message());
+                }
+            }
             return $response;
         }
         
@@ -106,6 +112,11 @@ class FBPixel_CAPI_API_Client {
         if ($response_code >= 400) {
             $error_message = $this->parse_error_response($response_body);
             $this->log_error('API Error', $error_message, $events);
+            if ($allow_queue) {
+                foreach ($events as $event) {
+                    $this->queue_event($event, $error_message);
+                }
+            }
             return new WP_Error('api_error', $error_message);
         }
         
@@ -123,6 +134,88 @@ class FBPixel_CAPI_API_Client {
      */
     public function send_event($event_data) {
         return $this->send_events(array($event_data));
+    }
+
+    /**
+     * Queue failed events for retry
+     *
+     * @param array $event_data
+     * @param string $error_message
+     */
+    public function queue_event($event_data, $error_message = '') {
+        global $wpdb;
+
+        $table_name = $this->get_queue_table_name();
+        $wpdb->insert(
+            $table_name,
+            array(
+                'event_data' => wp_json_encode($event_data),
+                'attempts' => 0,
+                'last_error' => $error_message,
+                'next_attempt_at' => current_time('mysql'),
+                'created_at' => current_time('mysql')
+            ),
+            array('%s', '%d', '%s', '%s', '%s')
+        );
+
+        if (!wp_next_scheduled('fbpixel_capi_process_queue')) {
+            wp_schedule_single_event(time() + 300, 'fbpixel_capi_process_queue');
+        }
+    }
+
+    /**
+     * Process queued events
+     *
+     * @param int $limit
+     */
+    public function process_queue($limit = 10) {
+        global $wpdb;
+
+        $table_name = $this->get_queue_table_name();
+        $now = current_time('mysql');
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$table_name} WHERE next_attempt_at <= %s ORDER BY id ASC LIMIT %d",
+                $now,
+                $limit
+            ),
+            ARRAY_A
+        );
+
+        if (empty($rows)) {
+            return;
+        }
+
+        foreach ($rows as $row) {
+            $event_data = json_decode($row['event_data'], true);
+            if (empty($event_data) || !is_array($event_data)) {
+                $wpdb->delete($table_name, array('id' => (int) $row['id']), array('%d'));
+                continue;
+            }
+
+            $result = $this->send_events(array($event_data), false);
+            if (!is_wp_error($result)) {
+                $wpdb->delete($table_name, array('id' => (int) $row['id']), array('%d'));
+                continue;
+            }
+
+            $attempts = (int) $row['attempts'] + 1;
+            $backoff = min(3600, 300 * $attempts);
+            $next_attempt = date('Y-m-d H:i:s', time() + $backoff);
+
+            $wpdb->update(
+                $table_name,
+                array(
+                    'attempts' => $attempts,
+                    'last_error' => $result->get_error_message(),
+                    'next_attempt_at' => $next_attempt
+                ),
+                array('id' => (int) $row['id']),
+                array('%d', '%s', '%s'),
+                array('%d')
+            );
+        }
     }
     
     /**
@@ -255,6 +348,16 @@ class FBPixel_CAPI_API_Client {
         $this->settings['test_event_code'] = $original_test_code;
         
         return $result;
+    }
+
+    /**
+     * Get queue table name
+     *
+     * @return string
+     */
+    private function get_queue_table_name() {
+        global $wpdb;
+        return $wpdb->prefix . 'fbpixel_capi_queue';
     }
 }
 

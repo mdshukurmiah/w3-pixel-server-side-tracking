@@ -3,9 +3,9 @@
 **Contributors:** Md Shukur Miah  
 **Tags:** facebook, pixel, conversions api, server-side tracking, woocommerce
 **Requires at least:** 5.0  
-**Tested up to:** 6.8  
+**Tested up to:** 6.9.4  
 **Requires PHP:** 7.4  
-**Stable tag:** 1.0.0  
+**Stable tag:** 1.0.1 
 **License:** GPLv2 or later  
 **License URI:** [https://www.gnu.org/licenses/gpl-2.0.html](https://www.gnu.org/licenses/gpl-2.0.html)
 
@@ -137,9 +137,9 @@ Yes — sensitive data is hashed. However, you must still handle user consent on
 
 ## Upgrade Notice
 
-### 1.1.0
+### 1.0.1
 
-New ViewContent event for WooCommerce product views. Enable it in plugin settings.
+Improved EMQ
 
 ### 1.0.0
 
