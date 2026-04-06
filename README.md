@@ -5,7 +5,7 @@
 **Requires at least:** 5.0  
 **Tested up to:** 6.9.4  
 **Requires PHP:** 7.4  
-**Stable tag:** 1.0.1
+**Stable tag:** 1.0.2
 **License:** GPLv2 or later  
 **License URI:** [https://www.gnu.org/licenses/gpl-2.0.html](https://www.gnu.org/licenses/gpl-2.0.html)
 
@@ -115,6 +115,10 @@ Yes — sensitive data is hashed. However, you must still handle user consent on
 
 ## Changelog
 
+### 1.0.2
+
+- Optimize EMQ
+
 ### 1.0.1
 
 - Added `ViewContent` event for product pages
@@ -122,7 +126,6 @@ Yes — sensitive data is hashed. However, you must still handle user consent on
 - Enhanced price handling for variable products
 - Added debug logging for `ViewContent`
 - Updated admin UI
-- Optimize EMQ
 
 ### 1.0.0
 
