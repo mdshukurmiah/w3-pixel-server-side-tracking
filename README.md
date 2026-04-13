@@ -5,7 +5,7 @@
 **Requires at least:** 5.0  
 **Tested up to:** 6.9.4  
 **Requires PHP:** 7.4  
-**Stable tag:** 1.0.2
+**Stable tag:** 1.0.3
 **License:** GPLv2 or later  
 **License URI:** [https://www.gnu.org/licenses/gpl-2.0.html](https://www.gnu.org/licenses/gpl-2.0.html)
 
@@ -29,10 +29,10 @@ The Facebook Pixel Server-Side Tracking (CAPI) plugin enables you to send Facebo
 
 ### Supported Events
 
-- `PageView` – Track page visits
-- `ViewContent` – Track product page views (WooCommerce)
-- `AddToCart` – Track when products are added to cart (WooCommerce)
-- `InitiateCheckout` – Track checkout initiation (WooCommerce)
+- `PageView` – Track page visits  
+- `ViewContent` – Track product page views (WooCommerce)  
+- `AddToCart` – Track when products are added to cart (WooCommerce)  
+- `InitiateCheckout` – Track checkout initiation (WooCommerce)  
 - `Purchase` – Track completed orders (WooCommerce)
 
 ### Why Use Server-Side Tracking?
@@ -47,11 +47,11 @@ The Facebook Pixel Server-Side Tracking (CAPI) plugin enables you to send Facebo
 
 ## Requirements
 
-- WordPress 5.0 or higher
-- PHP 7.4 or higher
-- Facebook Business Manager account
-- Facebook Pixel ID
-- Conversions API Access Token
+- WordPress 5.0 or higher  
+- PHP 7.4 or higher  
+- Facebook Business Manager account  
+- Facebook Pixel ID  
+- Conversions API Access Token  
 - WooCommerce (optional, for e-commerce tracking)
 
 ---
@@ -71,15 +71,15 @@ The Facebook Pixel Server-Side Tracking (CAPI) plugin enables you to send Facebo
 
 ### How do I get a Facebook Pixel ID?
 
-1. Go to [Facebook Events Manager](https://business.facebook.com/events_manager)
-2. Create or select a Pixel
+1. Go to [Facebook Events Manager](https://business.facebook.com/events_manager)  
+2. Create or select a Pixel  
 3. Copy the Pixel ID from the details page
 
 ### How do I generate a Conversions API Access Token?
 
-1. Open your Pixel in Events Manager
-2. Go to the **Settings** tab
-3. Find **Conversions API** section
+1. Open your Pixel in Events Manager  
+2. Go to the **Settings** tab  
+3. Find **Conversions API** section  
 4. Click “Generate access token” under “Set up manually”
 
 ### Do I need to remove my existing Facebook Pixel code?
@@ -106,36 +106,56 @@ Yes — sensitive data is hashed. However, you must still handle user consent on
 
 ## Screenshots
 
-1. Plugin settings page
-2. Event tracking configuration
-3. Debug logs and test connection
-4. WooCommerce integration status
+1. Plugin settings page  
+2. Event tracking configuration  
+3. Debug logs and test connection  
+4. WooCommerce integration status  
 
 ---
 
 ## Changelog
 
+### 1.0.3
+
+- Added browsing side tracking
+
 ### 1.0.2
 
-- Optimize EMQ
+- Added `ViewContent` event for product pages  
+- Improved product brand detection  
+- Enhanced price handling for variable products  
+- Added debug logging for `ViewContent`  
+- Updated admin UI
 
 ### 1.0.1
 
-- Added `ViewContent` event for product pages
-- Improved product brand detection
-- Enhanced price handling for variable products
-- Added debug logging for `ViewContent`
+- Added `ViewContent` event for product pages  
+- Improved product brand detection  
+- Enhanced price handling for variable products  
+- Added debug logging for `ViewContent`  
 - Updated admin UI
 
 ### 1.0.0
 
-- Initial release
-- Events: `PageView`, `AddToCart`, `InitiateCheckout`, `Purchase`
-- WooCommerce integration
-- Event deduplication
-- Debug mode
-- Connection test
+- Initial release  
+- Events: `PageView`, `AddToCart`, `InitiateCheckout`, `Purchase`  
+- WooCommerce integration  
+- Event deduplication  
+- Debug mode  
+- Connection test  
 - Data hashing
+
+---
+
+## Upgrade Notice
+
+### 1.0.1
+
+Improved EMQ
+
+### 1.0.0
+
+Initial release of the plugin.
 
 ---
 
@@ -143,9 +163,9 @@ Yes — sensitive data is hashed. However, you must still handle user consent on
 
 This plugin sends data to Facebook via Conversions API. Includes:
 
-- Event info (e.g., PageView, Purchase)
-- Hashed customer data (email, phone, etc.)
-- Technical info (IP address, user agent)
+- Event info (e.g., PageView, Purchase)  
+- Hashed customer data (email, phone, etc.)  
+- Technical info (IP address, user agent)  
 - Product details
 
 **Sensitive data is hashed before transmission.** No plain-text personal info is shared.

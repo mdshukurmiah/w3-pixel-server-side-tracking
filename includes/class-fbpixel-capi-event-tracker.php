@@ -26,6 +26,11 @@ class FBPixel_CAPI_Event_Tracker {
      * Deferred events queue
      */
     private $deferred_events = array();
+
+    /**
+     * Browser-side events queue (for Pixel)
+     */
+    private $browser_events = array();
     
     /**
      * Constructor
@@ -59,7 +64,8 @@ class FBPixel_CAPI_Event_Tracker {
         if (!empty($_SERVER['HTTP_REFERER'])) {
             $event_data['referrer_url'] = esc_url_raw($_SERVER['HTTP_REFERER']);
         }
-        
+
+        $this->queue_browser_event($event_data);
         $this->send_event($event_data);
     }
     
@@ -150,7 +156,8 @@ class FBPixel_CAPI_Event_Tracker {
         if (!empty($this->settings['debug_mode'])) {
             error_log('Facebook Pixel CAPI: ViewContent event data prepared for product ID: ' . $product_id);
         }
-        
+
+        $this->queue_browser_event($event_data);
         $this->send_event($event_data);
     }
     
@@ -212,7 +219,9 @@ class FBPixel_CAPI_Event_Tracker {
             ),
             'event_id' => $this->generate_event_id('AddToCart', $product_id . '_' . $quantity)
         );
-        
+
+        // Store for browser-side tracking (covers AJAX add-to-cart flows)
+        $this->queue_browser_event($event_data, true);
         $this->send_event($event_data);
     }
     
@@ -284,7 +293,8 @@ class FBPixel_CAPI_Event_Tracker {
             ),
             'event_id' => $this->generate_event_id('Purchase', $order_id)
         );
-        
+
+        $this->queue_browser_event($event_data);
         $this->send_event($event_data);
     }
     
@@ -356,6 +366,9 @@ class FBPixel_CAPI_Event_Tracker {
         
         // Defer this event to be sent in footer to ensure cart data is complete
         $this->deferred_events[] = $event_data;
+
+        // Queue browser event to fire in footer
+        $this->queue_browser_event($event_data);
     }
     
     /**
@@ -371,6 +384,29 @@ class FBPixel_CAPI_Event_Tracker {
         }
         
         $this->deferred_events = array();
+    }
+
+    /**
+     * Get queued browser-side events (Pixel)
+     *
+     * @return array
+     */
+    public function get_browser_events() {
+        $events = $this->browser_events;
+
+        // Merge and clear any WooCommerce-session queued events
+        if (class_exists('WooCommerce') && function_exists('WC')) {
+            $session = WC()->session;
+            if ($session) {
+                $pending = $session->get('fbpixel_capi_browser_events', array());
+                if (!empty($pending) && is_array($pending)) {
+                    $events = array_merge($events, $pending);
+                    $session->set('fbpixel_capi_browser_events', array());
+                }
+            }
+        }
+
+        return $events;
     }
     
     /**
@@ -418,6 +454,39 @@ class FBPixel_CAPI_Event_Tracker {
         }
         
         return $result;
+    }
+
+    /**
+     * Queue browser-side event for Pixel tracking
+     *
+     * @param array $event_data
+     * @param bool $store_in_session
+     */
+    private function queue_browser_event($event_data, $store_in_session = false) {
+        if (empty($event_data['event_name'])) {
+            return;
+        }
+
+        $browser_event = array(
+            'event_name' => $event_data['event_name'],
+            'event_id' => isset($event_data['event_id']) ? $event_data['event_id'] : '',
+            'custom_data' => isset($event_data['custom_data']) ? $event_data['custom_data'] : array()
+        );
+
+        if ($store_in_session && class_exists('WooCommerce') && function_exists('WC')) {
+            $session = WC()->session;
+            if ($session) {
+                $existing = $session->get('fbpixel_capi_browser_events', array());
+                if (!is_array($existing)) {
+                    $existing = array();
+                }
+                $existing[] = $browser_event;
+                $session->set('fbpixel_capi_browser_events', $existing);
+                return;
+            }
+        }
+
+        $this->browser_events[] = $browser_event;
     }
     
     /**

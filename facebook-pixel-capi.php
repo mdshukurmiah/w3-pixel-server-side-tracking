@@ -3,7 +3,7 @@
  * Plugin Name: W3 Pixel Server-Side Tracking
  * Plugin URI: https://github.com/mdshukurmiah/w3-pixel-capi
  * Description: A WordPress plugin that enables Facebook Pixel server-side tracking using the Conversions API (CAPI) for improved tracking accuracy and reliability.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Md Shukur Miah
  * Author URI: https://www.shukurs.com/
  * License: GPL v2 or later
@@ -106,6 +106,10 @@ class FacebookPixelCAPI {
         // Frontend hooks for event tracking
         add_action('wp_head', array($this, 'track_page_view'));
         add_action('wp_footer', array($this, 'track_deferred_events'));
+
+        // Browser-side (Pixel) tracking
+        add_action('wp_head', array($this, 'output_pixel_base_code'), 1);
+        add_action('wp_footer', array($this, 'output_browser_events'), 20);
     }
     
     /**
@@ -406,6 +410,87 @@ class FacebookPixelCAPI {
         if (isset($this->event_tracker)) {
             $this->event_tracker->track_view_content();
         }
+    }
+
+    /**
+     * Output Facebook Pixel base code for browser-side tracking
+     */
+    public function output_pixel_base_code() {
+        if (is_admin()) {
+            return;
+        }
+
+        $settings = get_option('fbpixel_capi_settings', array());
+        if (empty($settings['pixel_id'])) {
+            return;
+        }
+
+        $pixel_id = esc_js($settings['pixel_id']);
+        $pageview_enabled = !empty($settings['enabled_events']['PageView']);
+        ?>
+        <!-- Facebook Pixel Base Code (W3 Pixel CAPI) -->
+        <script>
+        !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+        n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+        document,'script','https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init','<?php echo $pixel_id; ?>');
+        </script>
+        <?php if ($pageview_enabled): ?>
+        <noscript>
+            <img height="1" width="1" style="display:none"
+                 src="https://www.facebook.com/tr?id=<?php echo esc_attr($settings['pixel_id']); ?>&ev=PageView&noscript=1" />
+        </noscript>
+        <?php endif; ?>
+        <!-- End Facebook Pixel Base Code -->
+        <?php
+    }
+
+    /**
+     * Output browser-side events with matching parameters and event IDs
+     */
+    public function output_browser_events() {
+        if (is_admin()) {
+            return;
+        }
+
+        if (!isset($this->event_tracker)) {
+            return;
+        }
+
+        $settings = get_option('fbpixel_capi_settings', array());
+        if (empty($settings['pixel_id'])) {
+            return;
+        }
+
+        $events = $this->event_tracker->get_browser_events();
+        if (empty($events)) {
+            return;
+        }
+
+        $events_json = wp_json_encode($events);
+        ?>
+        <!-- Facebook Pixel Events (W3 Pixel CAPI) -->
+        <script>
+        (function(){
+            if (!window.fbq) { return; }
+            var events = <?php echo $events_json; ?> || [];
+            for (var i = 0; i < events.length; i++) {
+                var evt = events[i] || {};
+                if (!evt.event_name) { continue; }
+                var params = evt.custom_data || {};
+                var eventId = evt.event_id || '';
+                if (eventId) {
+                    fbq('track', evt.event_name, params, {eventID: eventId});
+                } else {
+                    fbq('track', evt.event_name, params);
+                }
+            }
+        })();
+        </script>
+        <!-- End Facebook Pixel Events -->
+        <?php
     }
 }
 
