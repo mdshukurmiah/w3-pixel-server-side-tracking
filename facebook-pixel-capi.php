@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FBPIXEL_CAPI_VERSION', '1.0.0');
+define('FBPIXEL_CAPI_VERSION', '1.0.3');
 define('FBPIXEL_CAPI_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FBPIXEL_CAPI_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('FBPIXEL_CAPI_PLUGIN_BASENAME', plugin_basename(__FILE__));
